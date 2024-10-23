@@ -111,3 +111,5 @@ results*
 *.mat
 *.tar
 *.bin
+/data/
+.idea/
