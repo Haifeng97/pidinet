@@ -137,7 +137,7 @@ def adjust_learning_rate(optimizer, epoch, args):
 #     edge specific functions        #
 ######################################
 
-
+##原版交叉熵
 def cross_entropy_loss_RCF(prediction, labelf, beta):
     label = labelf.long()
     mask = labelf.clone()
@@ -146,7 +146,8 @@ def cross_entropy_loss_RCF(prediction, labelf, beta):
 
     mask[label == 1] = 1.0 * num_negative / (num_positive + num_negative)
     mask[label == 0] = beta * num_positive / (num_positive + num_negative)
-    mask[label == 2] = 0
+    # mask[label == 2] = 0
+    mask[labelf == 0.5] = 0
     cost = F.binary_cross_entropy(
             prediction, labelf, weight=mask, reduction='sum')
 

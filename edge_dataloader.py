@@ -59,7 +59,8 @@ class BSDS_Loader(data.Dataset):
             threshold = self.threshold
             lb = lb[np.newaxis, :, :]
             lb[lb == 0] = 0
-            lb[np.logical_and(lb>0, lb<threshold)] = 2
+            # fix label 0-1 assert
+            lb[np.logical_and(lb>0, lb<threshold)] = 0.5
             lb[lb >= threshold] = 1
             
         else:
@@ -121,7 +122,8 @@ class BSDS_VOCLoader(data.Dataset):
             threshold = self.threshold
             lb = lb[np.newaxis, :, :]
             lb[lb == 0] = 0
-            lb[np.logical_and(lb>0, lb<threshold)] = 2
+            # fix label 0-1 assert
+            lb[np.logical_and(lb>0, lb<threshold)] = 0.5
             lb[lb >= threshold] = 1
             
         else:
@@ -183,7 +185,8 @@ class Multicue_Loader(data.Dataset):
             threshold = self.threshold
             lb = lb[np.newaxis, :, :]
             lb[lb == 0] = 0
-            lb[np.logical_and(lb>0, lb<threshold)] = 2
+            # fix label 0-1 assert
+            lb[np.logical_and(lb>0, lb<threshold)] = 0.5
             lb[lb >= threshold] = 1
             
         else:
@@ -251,7 +254,8 @@ class NYUD_Loader(data.Dataset):
             threshold = self.threshold
             lb = lb[np.newaxis, :, :]
             lb[lb == 0] = 0
-            lb[np.logical_and(lb>0, lb<threshold)] = 2
+            # fix label 0-1 assert
+            lb[np.logical_and(lb>0, lb<threshold)] = 0.5
             lb[lb >= threshold] = 1
             
         else:

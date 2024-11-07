@@ -26,6 +26,7 @@ import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description='PyTorch Pixel Difference Convolutional Networks')
 
@@ -269,6 +270,14 @@ def train(train_loader, model, optimizer, epoch, running_file, args, running_lr)
         if args.use_cuda:
             image = image.cuda(non_blocking=True)
             label = label.cuda(non_blocking=True)
+
+        ## Display image, just for debugging
+        # img = image[0].cpu()  # 提取批次中的第一张图片
+        # img = torchvision.transforms.functional.to_pil_image(img)  # 将张量转换为 PIL 图像
+        # plt.imshow(img)
+        # plt.title(f'Epoch {epoch}, Batch {i}')
+        # plt.axis('off')
+        # plt.show()
 
         ## Compute output
         outputs = model(image)
