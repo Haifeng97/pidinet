@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import matplotlib.pyplot as plt
+import cv2
 
 parser = argparse.ArgumentParser(description='PyTorch Pixel Difference Convolutional Networks')
 
@@ -58,8 +59,10 @@ parser.add_argument('--checkinfo', action='store_true',
 
 parser.add_argument('--epochs', type=int, default=20, 
         help='number of total epochs to run')
-parser.add_argument('--iter-size', type=int, default=24, 
+parser.add_argument('--iter-size', type=int, default=24,
         help='number of samples in each iteration')
+parser.add_argument('--batch-size', type=int, default=16,
+        help='batch size for training')
 parser.add_argument('--lr', type=float, default=0.005, 
         help='initial learning rate for all weights')
 parser.add_argument('--lr-type', type=str, default='multistep', 
@@ -184,10 +187,14 @@ def main(running_file):
     else:
         raise ValueError("unrecognized dataset setting")
 
+    # train_loader = DataLoader(
+    #     train_dataset, batch_size=1, num_workers=args.workers, shuffle=True)
+    # test_loader = DataLoader(
+    #     test_dataset, batch_size=1, num_workers=args.workers, shuffle=False)
     train_loader = DataLoader(
-        train_dataset, batch_size=1, num_workers=args.workers, shuffle=True)
+        train_dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=True)
     test_loader = DataLoader(
-        test_dataset, batch_size=1, num_workers=args.workers, shuffle=False)
+        test_dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False)
 
     ### Create log file
     log_file = os.path.join(args.savedir, '%s_log.txt' % args.model)
