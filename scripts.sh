@@ -105,3 +105,5 @@ python main.py --model pidinet_converted --config carv4 --sa --dil -j 4 --gpu 0 
 # 17 FPS
 python throughput.py --model pidinet_converted --sa --dil --config carv4 -j 1 --gpu 0 --datadir /path/to/Multicue/multicue_v2 --dataset Multicue-boundary-1
 
+# table5 BSDS_VOC iter 1 batch 32 j 16 remote
+python main.py --model pidinet --config carv4 --sa --dil --resume --iter-size 1 00batch-size 32 -j 20 --gpu 0 --epochs 20 --lr 0.005 --lr-type multistep --lr-steps 10-16 --wd 1e-4 --savedir ./train_table5/table5_pidinet --datadir ./data/BSDS500 --dataset BSDS #--evaluate /path/to/table5_pidinet.pth
