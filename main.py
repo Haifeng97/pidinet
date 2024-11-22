@@ -61,7 +61,7 @@ parser.add_argument('--epochs', type=int, default=20,
         help='number of total epochs to run')
 parser.add_argument('--iter-size', type=int, default=24,
         help='number of samples in each iteration')
-parser.add_argument('--batch-size', type=int, default=16,
+parser.add_argument('--batch-size', type=int, default=1,
         help='batch size for training')
 parser.add_argument('--lr', type=float, default=0.005, 
         help='initial learning rate for all weights')
@@ -171,7 +171,7 @@ def main(running_file):
     if 'BSDS' == args.dataset[0]:
         if args.only_bsds:
             train_dataset = BSDS_Loader(root=args.datadir, split="train", threshold=args.eta, ablation=args.ablation)
-            test_dataset = BSDS_Loader(root=args.datadir, split="test", threshold=args.eta)
+            test_dataset = BSDS_Loader(root=args.datadir, split="test", threshold=args.eta, ablation=args.ablation)
         else:
             train_dataset = BSDS_VOCLoader(root=args.datadir, split="train", threshold=args.eta, ablation=args.ablation)
             test_dataset = BSDS_VOCLoader(root=args.datadir, split="test", threshold=args.eta)

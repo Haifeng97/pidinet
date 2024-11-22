@@ -114,3 +114,5 @@ results*
 /data/
 .idea/
 train_test/
+/my_trained_models/
+/my_generated_maps/
