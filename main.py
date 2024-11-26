@@ -48,6 +48,8 @@ parser.add_argument('--sa', action='store_true',
         help='use CSAM in pidinet')
 parser.add_argument('--dil', action='store_true', 
         help='use CDCM in pidinet')
+parser.add_argument('--cbam', action='store_true',
+                    help='use CBAM in pidinet')
 parser.add_argument('--config', type=str, default='carv4', 
         help='model configurations, please refer to models/config.py for possible configurations')
 parser.add_argument('--seed', type=int, default=None, 

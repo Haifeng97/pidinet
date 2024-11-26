@@ -116,3 +116,4 @@ results*
 train_test/
 /my_trained_models/
 /my_generated_maps/
+/my_trained_models_4090/

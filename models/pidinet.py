@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from .ops import Conv2d
 from .config import config_model, config_model_converted
+from .cbam import CBAM
 
 class CSAM(nn.Module):
     """
@@ -128,9 +129,10 @@ class PDCBlock_converted(nn.Module):
         return y
 
 class PiDiNet(nn.Module):
-    def __init__(self, inplane, pdcs, dil=None, sa=False, convert=False):
+    def __init__(self, inplane, pdcs, dil=None, sa=False, cbam=False, convert=False):
         super(PiDiNet, self).__init__()
         self.sa = sa
+        self.cbam = cbam
         if dil is not None:
             assert isinstance(dil, int), 'dil should be an int'
         self.dil = dil
@@ -180,28 +182,35 @@ class PiDiNet(nn.Module):
         self.fuseplanes.append(self.inplane) # 4C
 
         self.conv_reduces = nn.ModuleList()
-        if self.sa and self.dil is not None:
-            self.attentions = nn.ModuleList()
-            self.dilations = nn.ModuleList()
-            for i in range(4):
-                self.dilations.append(CDCM(self.fuseplanes[i], self.dil))
-                self.attentions.append(CSAM(self.dil))
-                self.conv_reduces.append(MapReduce(self.dil))
-        elif self.sa:
-            self.attentions = nn.ModuleList()
-            for i in range(4):
-                self.attentions.append(CSAM(self.fuseplanes[i]))
-                self.conv_reduces.append(MapReduce(self.fuseplanes[i]))
-        elif self.dil is not None:
-            self.dilations = nn.ModuleList()
-            for i in range(4):
-                self.dilations.append(CDCM(self.fuseplanes[i], self.dil))
-                self.conv_reduces.append(MapReduce(self.dil))
-        else:
-            for i in range(4):
-                self.conv_reduces.append(MapReduce(self.fuseplanes[i]))
 
-        self.classifier = nn.Conv2d(4, 1, kernel_size=1) # has bias
+        # 初始化 CDCM 模块
+        if self.dil is not None:
+            self.dilations = nn.ModuleList()
+            for i in range(4):
+                self.dilations.append(CDCM(self.fuseplanes[i], self.dil))
+
+        # 初始化 CBAM 模块
+        if self.cbam:
+            self.cbam_modules = nn.ModuleList()
+            for i in range(4):
+                in_planes = self.dil if self.dil is not None else self.fuseplanes[i]
+                self.cbam_modules.append(CBAM(in_planes))
+
+        # 初始化 CSAM 模块
+        if self.sa:
+            self.attentions = nn.ModuleList()
+            for i in range(4):
+                in_channels = self.dil if self.dil is not None else self.fuseplanes[i]
+                self.attentions.append(CSAM(in_channels))
+
+        # 初始化 conv_reduces
+        self.conv_reduces = nn.ModuleList()
+        for i in range(4):
+            reduce_channels = self.dil if self.dil is not None else self.fuseplanes[i]
+            self.conv_reduces.append(MapReduce(reduce_channels))
+
+        # 初始化 classifier
+        self.classifier = nn.Conv2d(4, 1, kernel_size=1)  # has bias
         nn.init.constant_(self.classifier.weight, 0.25)
         nn.init.constant_(self.classifier.bias, 0)
 
@@ -245,18 +254,21 @@ class PiDiNet(nn.Module):
         x4 = self.block4_3(x4)
         x4 = self.block4_4(x4)
 
-        x_fuses = []
-        if self.sa and self.dil is not None:
-            for i, xi in enumerate([x1, x2, x3, x4]):
-                x_fuses.append(self.attentions[i](self.dilations[i](xi)))
-        elif self.sa:
-            for i, xi in enumerate([x1, x2, x3, x4]):
-                x_fuses.append(self.attentions[i](xi))
-        elif self.dil is not None:
-            for i, xi in enumerate([x1, x2, x3, x4]):
-                x_fuses.append(self.dilations[i](xi))
-        else:
-            x_fuses = [x1, x2, x3, x4]
+        x_fuses = [x1, x2, x3, x4]
+        # 应用 CDCM
+        if self.dil is not None:
+            for i in range(4):
+                x_fuses[i] = self.dilations[i](x_fuses[i])
+
+        # 应用 CBAM
+        if self.cbam:
+            for i in range(4):
+                x_fuses[i] = self.cbam_modules[i](x_fuses[i])
+
+        # 应用 CSAM
+        if self.sa:
+            for i in range(4):
+                x_fuses[i] = self.attentions[i](x_fuses[i])
 
         e1 = self.conv_reduces[0](x_fuses[0])
         e1 = F.interpolate(e1, (H, W), mode="bilinear", align_corners=False)
@@ -284,17 +296,17 @@ class PiDiNet(nn.Module):
 def pidinet_tiny(args):
     pdcs = config_model(args.config)
     dil = 8 if args.dil else None
-    return PiDiNet(20, pdcs, dil=dil, sa=args.sa)
+    return PiDiNet(20, pdcs, dil=dil, sa=args.sa, cbam=args.cbam)
 
 def pidinet_small(args):
     pdcs = config_model(args.config)
     dil = 12 if args.dil else None
-    return PiDiNet(30, pdcs, dil=dil, sa=args.sa)
+    return PiDiNet(30, pdcs, dil=dil, sa=args.sa, cbam=args.cbam)
 
 def pidinet(args):
     pdcs = config_model(args.config)
     dil = 24 if args.dil else None
-    return PiDiNet(60, pdcs, dil=dil, sa=args.sa)
+    return PiDiNet(60, pdcs, dil=dil, sa=args.sa, cbam=args.cbam)
 
 
 
