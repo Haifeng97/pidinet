@@ -116,3 +116,5 @@ results*
 train_test/
 /my_trained_models/
 /my_generated_maps/
+/my_trained_models_3080ti/
+/my_trained_models_4090/
