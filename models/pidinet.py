@@ -13,6 +13,8 @@ import torch.nn.functional as F
 from .ops import Conv2d
 from .config import config_model, config_model_converted
 
+from mmcv.ops import DeformConv2dPack
+
 class CSAM(nn.Module):
     """
     Compact Spatial Attention Module
@@ -35,21 +37,23 @@ class CSAM(nn.Module):
 
         return x * y
 
+
 class CDCM(nn.Module):
     """
-    Compact Dilation Convolution based Module
+    Compact Dilation Convolution based Module with Deformable Convolution
     """
+
     def __init__(self, in_channels, out_channels):
         super(CDCM, self).__init__()
 
         self.relu1 = nn.ReLU()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0)
-        self.conv2_1 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=5, padding=5, bias=False)
-        self.conv2_2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=7, padding=7, bias=False)
-        self.conv2_3 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=9, padding=9, bias=False)
-        self.conv2_4 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=11, padding=11, bias=False)
+        self.conv2_1 = DeformConv2dPack(out_channels, out_channels, kernel_size=3, dilation=5, padding=5, bias=False)
+        self.conv2_2 = DeformConv2dPack(out_channels, out_channels, kernel_size=3, dilation=7, padding=7, bias=False)
+        self.conv2_3 = DeformConv2dPack(out_channels, out_channels, kernel_size=3, dilation=9, padding=9, bias=False)
+        self.conv2_4 = DeformConv2dPack(out_channels, out_channels, kernel_size=3, dilation=11, padding=11, bias=False)
         nn.init.constant_(self.conv1.bias, 0)
-        
+
     def forward(self, x):
         x = self.relu1(x)
         x = self.conv1(x)
