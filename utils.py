@@ -158,3 +158,28 @@ def cross_entropy_loss_RCF(prediction, labelf, beta):
 ######################################
 
 # no function currently
+
+
+# 在 utils.py 中添加
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=0.25, gamma=2, reduction='sum'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        # 将预测值限制在 (0, 1)
+        inputs = torch.clamp(inputs, 1e-6, 1 - 1e-6)
+        # 计算交叉熵损失
+        BCE_loss = F.binary_cross_entropy(inputs, targets, reduction='none')
+        # 计算 Focal Loss
+        pt = torch.exp(-BCE_loss)
+        F_loss = self.alpha * (1 - pt) ** self.gamma * BCE_loss
+        if self.reduction == 'mean':
+            return F_loss.mean()
+        elif self.reduction == 'sum':
+            return F_loss.sum()
+        else:
+            return F_loss

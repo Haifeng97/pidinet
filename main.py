@@ -29,6 +29,9 @@ import torch.backends.cudnn as cudnn
 import matplotlib.pyplot as plt
 import cv2
 
+from utils import FocalLoss
+
+
 parser = argparse.ArgumentParser(description='PyTorch Pixel Difference Convolutional Networks')
 
 parser.add_argument('--savedir', type=str, default='results/savedir', 
@@ -255,6 +258,8 @@ def train(train_loader, model, optimizer, epoch, running_file, args, running_lr)
     data_time = AverageMeter()
     losses = AverageMeter()
 
+    focal_loss_fn = FocalLoss(alpha=0.25, gamma=2, reduction='sum')
+
     ## Switch to train mode
     model.train()
 
@@ -289,11 +294,11 @@ def train(train_loader, model, optimizer, epoch, running_file, args, running_lr)
         ## Compute output
         outputs = model(image)
         if not isinstance(outputs, list):
-            loss = cross_entropy_loss_RCF(outputs, label, args.lmbda)
+            loss = focal_loss_fn(outputs, label)
         else:
             loss = 0
             for o in outputs:
-                loss += cross_entropy_loss_RCF(o, label, args.lmbda)
+                loss += focal_loss_fn(o, label)
 
         counter += 1
         loss_value += loss.item()
