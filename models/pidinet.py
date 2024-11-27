@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from .ops import Conv2d
 from .config import config_model, config_model_converted
+from .self_attention import SelfAttention
 
 class CSAM(nn.Module):
     """
@@ -128,9 +129,10 @@ class PDCBlock_converted(nn.Module):
         return y
 
 class PiDiNet(nn.Module):
-    def __init__(self, inplane, pdcs, dil=None, sa=False, convert=False):
+    def __init__(self, inplane, pdcs, dil=None, sa=False, convert=False, self_attention=False):
         super(PiDiNet, self).__init__()
         self.sa = sa
+        self.self_attention = self_attention
         if dil is not None:
             assert isinstance(dil, int), 'dil should be an int'
         self.dil = dil
@@ -201,6 +203,13 @@ class PiDiNet(nn.Module):
             for i in range(4):
                 self.conv_reduces.append(MapReduce(self.fuseplanes[i]))
 
+        if self.self_attention:
+            self.sa_modules = nn.ModuleList()
+            num_stages = 4  # 总共有4个stage
+            for i in range(num_stages):
+                in_channels = self.dil if self.dil is not None else self.fuseplanes[i]
+                self.sa_modules.append(SelfAttention(in_channels))
+
         self.classifier = nn.Conv2d(4, 1, kernel_size=1) # has bias
         nn.init.constant_(self.classifier.weight, 0.25)
         nn.init.constant_(self.classifier.bias, 0)
@@ -248,15 +257,24 @@ class PiDiNet(nn.Module):
         x_fuses = []
         if self.sa and self.dil is not None:
             for i, xi in enumerate([x1, x2, x3, x4]):
-                x_fuses.append(self.attentions[i](self.dilations[i](xi)))
+                xi = self.dilations[i](xi)
+                xi = self.attentions[i](xi)
+                x_fuses.append(xi)
         elif self.sa:
             for i, xi in enumerate([x1, x2, x3, x4]):
-                x_fuses.append(self.attentions[i](xi))
+                xi = self.attentions[i](xi)
+                x_fuses.append(xi)
         elif self.dil is not None:
             for i, xi in enumerate([x1, x2, x3, x4]):
-                x_fuses.append(self.dilations[i](xi))
+                xi = self.dilations[i](xi)
+                x_fuses.append(xi)
         else:
             x_fuses = [x1, x2, x3, x4]
+
+            # 应用自注意力模块
+        if self.self_attention:
+            for i in range(len(x_fuses)):
+                x_fuses[i] = self.sa_modules[i](x_fuses[i])
 
         e1 = self.conv_reduces[0](x_fuses[0])
         e1 = F.interpolate(e1, (H, W), mode="bilinear", align_corners=False)
@@ -294,7 +312,7 @@ def pidinet_small(args):
 def pidinet(args):
     pdcs = config_model(args.config)
     dil = 24 if args.dil else None
-    return PiDiNet(60, pdcs, dil=dil, sa=args.sa)
+    return PiDiNet(60, pdcs, dil=dil, sa=args.sa, self_attention=args.self_attention)
 
 
 
