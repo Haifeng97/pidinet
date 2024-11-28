@@ -163,7 +163,7 @@ def cross_entropy_loss_RCF(prediction, labelf, beta):
 # 在 utils.py 中添加
 
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2, reduction='sum'):
+    def __init__(self, alpha=0.7, gamma=3, reduction='sum'):
         super(FocalLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
