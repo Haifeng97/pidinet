@@ -59,6 +59,23 @@ class CDCM(nn.Module):
         x4 = self.conv2_4(x)
         return x1 + x2 + x3 + x4
 
+class SEModule(nn.Module):
+    def __init__(self, channels, reduction=16):
+        super(SEModule, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        batch_size, C, _, _ = x.size()
+        y = self.avg_pool(x).view(batch_size, C)
+        y = self.fc(y).view(batch_size, C, 1, 1)
+        return x * y
+
 
 class MapReduce(nn.Module):
     """
@@ -85,6 +102,7 @@ class PDCBlock(nn.Module):
         self.conv1 = Conv2d(pdc, inplane, inplane, kernel_size=3, padding=1, groups=inplane, bias=False)
         self.relu2 = nn.ReLU()
         self.conv2 = nn.Conv2d(inplane, ouplane, kernel_size=1, padding=0, bias=False)
+        self.se = SEModule(ouplane)
 
     def forward(self, x):
         if self.stride > 1:
@@ -95,6 +113,7 @@ class PDCBlock(nn.Module):
         if self.stride > 1:
             x = self.shortcut(x)
         y = y + x
+        y = self.se(y)
         return y
 
 class PDCBlock_converted(nn.Module):
