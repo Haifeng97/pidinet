@@ -21,14 +21,14 @@ class CSAM(nn.Module):
         super(CSAM, self).__init__()
 
         mid_channels = 4
-        self.relu1 = nn.ReLU()
+        self.activation = nn.SiLU()
         self.conv1 = nn.Conv2d(channels, mid_channels, kernel_size=1, padding=0)
         self.conv2 = nn.Conv2d(mid_channels, 1, kernel_size=3, padding=1, bias=False)
         self.sigmoid = nn.Sigmoid()
         nn.init.constant_(self.conv1.bias, 0)
 
     def forward(self, x):
-        y = self.relu1(x)
+        y = self.activation(x)
         y = self.conv1(y)
         y = self.conv2(y)
         y = self.sigmoid(y)
@@ -42,16 +42,16 @@ class CDCM(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(CDCM, self).__init__()
 
-        self.relu1 = nn.ReLU()
+        self.activation = nn.SiLU()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0)
         self.conv2_1 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=5, padding=5, bias=False)
         self.conv2_2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=7, padding=7, bias=False)
         self.conv2_3 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=9, padding=9, bias=False)
         self.conv2_4 = nn.Conv2d(out_channels, out_channels, kernel_size=3, dilation=11, padding=11, bias=False)
         nn.init.constant_(self.conv1.bias, 0)
-        
+
     def forward(self, x):
-        x = self.relu1(x)
+        x = self.activation(x)
         x = self.conv1(x)
         x1 = self.conv2_1(x)
         x2 = self.conv2_2(x)
@@ -76,21 +76,20 @@ class MapReduce(nn.Module):
 class PDCBlock(nn.Module):
     def __init__(self, pdc, inplane, ouplane, stride=1):
         super(PDCBlock, self).__init__()
-        self.stride=stride
-            
-        self.stride=stride
+        self.stride = stride
+
         if self.stride > 1:
             self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
             self.shortcut = nn.Conv2d(inplane, ouplane, kernel_size=1, padding=0)
         self.conv1 = Conv2d(pdc, inplane, inplane, kernel_size=3, padding=1, groups=inplane, bias=False)
-        self.relu2 = nn.ReLU()
+        self.activation = nn.SiLU()
         self.conv2 = nn.Conv2d(inplane, ouplane, kernel_size=1, padding=0, bias=False)
 
     def forward(self, x):
         if self.stride > 1:
             x = self.pool(x)
         y = self.conv1(x)
-        y = self.relu2(y)
+        y = self.activation(y)
         y = self.conv2(y)
         if self.stride > 1:
             x = self.shortcut(x)
@@ -104,7 +103,7 @@ class PDCBlock_converted(nn.Module):
     """
     def __init__(self, pdc, inplane, ouplane, stride=1):
         super(PDCBlock_converted, self).__init__()
-        self.stride=stride
+        self.stride = stride
 
         if self.stride > 1:
             self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -113,14 +112,14 @@ class PDCBlock_converted(nn.Module):
             self.conv1 = nn.Conv2d(inplane, inplane, kernel_size=5, padding=2, groups=inplane, bias=False)
         else:
             self.conv1 = nn.Conv2d(inplane, inplane, kernel_size=3, padding=1, groups=inplane, bias=False)
-        self.relu2 = nn.ReLU()
+        self.activation = nn.SiLU()
         self.conv2 = nn.Conv2d(inplane, ouplane, kernel_size=1, padding=0, bias=False)
 
     def forward(self, x):
         if self.stride > 1:
             x = self.pool(x)
         y = self.conv1(x)
-        y = self.relu2(y)
+        y = self.activation(y)
         y = self.conv2(y)
         if self.stride > 1:
             x = self.shortcut(x)
@@ -145,7 +144,7 @@ class PiDiNet(nn.Module):
             else:
                 init_kernel_size = 3
                 init_padding = 1
-            self.init_block = nn.Conv2d(3, self.inplane, 
+            self.init_block = nn.Conv2d(3, self.inplane,
                     kernel_size=init_kernel_size, padding=init_padding, bias=False)
             block_class = PDCBlock_converted
         else:
@@ -164,7 +163,7 @@ class PiDiNet(nn.Module):
         self.block2_3 = block_class(pdcs[6], self.inplane, self.inplane)
         self.block2_4 = block_class(pdcs[7], self.inplane, self.inplane)
         self.fuseplanes.append(self.inplane) # 2C
-        
+
         inplane = self.inplane
         self.inplane = self.inplane * 2
         self.block3_1 = block_class(pdcs[8], inplane, self.inplane, stride=2)
@@ -210,16 +209,16 @@ class PiDiNet(nn.Module):
     def get_weights(self):
         conv_weights = []
         bn_weights = []
-        relu_weights = []
+        activation_weights = []
         for pname, p in self.named_parameters():
             if 'bn' in pname:
                 bn_weights.append(p)
-            elif 'relu' in pname:
-                relu_weights.append(p)
+            elif 'activation' in pname:
+                activation_weights.append(p)
             else:
                 conv_weights.append(p)
 
-        return conv_weights, bn_weights, relu_weights
+        return conv_weights, bn_weights, activation_weights
 
     def forward(self, x):
         H, W = x.size()[2:]
@@ -273,8 +272,6 @@ class PiDiNet(nn.Module):
         outputs = [e1, e2, e3, e4]
 
         output = self.classifier(torch.cat(outputs, dim=1))
-        #if not self.training:
-        #    return torch.sigmoid(output)
 
         outputs.append(output)
         outputs = [torch.sigmoid(r) for r in outputs]
