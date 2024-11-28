@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from .ops import Conv2d
 from .config import config_model, config_model_converted
+from .ppm import PyramidPoolingModule
 
 class CSAM(nn.Module):
     """
@@ -205,6 +206,8 @@ class PiDiNet(nn.Module):
         nn.init.constant_(self.classifier.weight, 0.25)
         nn.init.constant_(self.classifier.bias, 0)
 
+        self.ppm = PyramidPoolingModule(self.inplane)
+
         print('initialization done')
 
     def get_weights(self):
@@ -244,6 +247,9 @@ class PiDiNet(nn.Module):
         x4 = self.block4_2(x4)
         x4 = self.block4_3(x4)
         x4 = self.block4_4(x4)
+
+        # 应用 PPM 模块
+        x4 = self.ppm(x4)
 
         x_fuses = []
         if self.sa and self.dil is not None:
