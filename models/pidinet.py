@@ -137,7 +137,10 @@ class PiDiNet(nn.Module):
 
         self.fuseplanes = []
 
+        # 保存初始的 inplane，用于后续计算
+        initial_inplane = inplane
         self.inplane = inplane
+
         if convert:
             if pdcs[0] == 'rd':
                 init_kernel_size = 5
@@ -145,40 +148,64 @@ class PiDiNet(nn.Module):
             else:
                 init_kernel_size = 3
                 init_padding = 1
-            self.init_block = nn.Conv2d(3, self.inplane, 
-                    kernel_size=init_kernel_size, padding=init_padding, bias=False)
+            self.init_block = nn.Conv2d(3, self.inplane,
+                                        kernel_size=init_kernel_size, padding=init_padding, bias=False)
             block_class = PDCBlock_converted
         else:
             self.init_block = Conv2d(pdcs[0], 3, self.inplane, kernel_size=3, padding=1)
             block_class = PDCBlock
 
+        # Stage 1
         self.block1_1 = block_class(pdcs[1], self.inplane, self.inplane)
         self.block1_2 = block_class(pdcs[2], self.inplane, self.inplane)
         self.block1_3 = block_class(pdcs[3], self.inplane, self.inplane)
-        self.fuseplanes.append(self.inplane) # C
+        self.fuseplanes.append(self.inplane)  # C
 
-        inplane = self.inplane
+        # Stage 2
+        inplane_stage2 = self.inplane
         self.inplane = self.inplane * 2
-        self.block2_1 = block_class(pdcs[4], inplane, self.inplane, stride=2)
+        self.block2_1 = block_class(pdcs[4], inplane_stage2, self.inplane, stride=2)
         self.block2_2 = block_class(pdcs[5], self.inplane, self.inplane)
         self.block2_3 = block_class(pdcs[6], self.inplane, self.inplane)
         self.block2_4 = block_class(pdcs[7], self.inplane, self.inplane)
-        self.fuseplanes.append(self.inplane) # 2C
-        
-        inplane = self.inplane
+        self.fuseplanes.append(self.inplane)  # 2C
+
+        # Stage 1 到 Stage 2 的通道调整层（使用 MaxPool2d 下采样）
+        self.adjust_x1_to_x2 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(inplane_stage2, self.inplane, kernel_size=1, bias=False)
+        )
+
+        # Stage 3
+        inplane_stage3 = self.inplane
         self.inplane = self.inplane * 2
-        self.block3_1 = block_class(pdcs[8], inplane, self.inplane, stride=2)
+        self.block3_1 = block_class(pdcs[8], inplane_stage3, self.inplane, stride=2)
         self.block3_2 = block_class(pdcs[9], self.inplane, self.inplane)
         self.block3_3 = block_class(pdcs[10], self.inplane, self.inplane)
         self.block3_4 = block_class(pdcs[11], self.inplane, self.inplane)
-        self.fuseplanes.append(self.inplane) # 4C
+        self.fuseplanes.append(self.inplane)  # 4C
 
-        self.block4_1 = block_class(pdcs[12], self.inplane, self.inplane, stride=2)
+        # Stage 2 到 Stage 3 的通道调整层
+        self.adjust_x2_to_x3 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(inplane_stage3, self.inplane, kernel_size=1, bias=False)
+        )
+
+        # Stage 4
+        inplane_stage4 = self.inplane
+        self.inplane = self.inplane * 2
+        self.block4_1 = block_class(pdcs[12], inplane_stage4, self.inplane, stride=2)
         self.block4_2 = block_class(pdcs[13], self.inplane, self.inplane)
         self.block4_3 = block_class(pdcs[14], self.inplane, self.inplane)
         self.block4_4 = block_class(pdcs[15], self.inplane, self.inplane)
-        self.fuseplanes.append(self.inplane) # 4C
+        self.fuseplanes.append(self.inplane)  # 8C
 
+        # Stage 3 到 Stage 4 的通道调整层
+        self.adjust_x3_to_x4 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(inplane_stage4, self.inplane, kernel_size=1, bias=False)
+        )
+        # 初始化注意力和其他模块（保持不变）
         self.conv_reduces = nn.ModuleList()
         if self.sa and self.dil is not None:
             self.attentions = nn.ModuleList()
@@ -201,7 +228,7 @@ class PiDiNet(nn.Module):
             for i in range(4):
                 self.conv_reduces.append(MapReduce(self.fuseplanes[i]))
 
-        self.classifier = nn.Conv2d(4, 1, kernel_size=1) # has bias
+        self.classifier = nn.Conv2d(4, 1, kernel_size=1)  # has bias
         nn.init.constant_(self.classifier.weight, 0.25)
         nn.init.constant_(self.classifier.bias, 0)
 
@@ -221,29 +248,43 @@ class PiDiNet(nn.Module):
 
         return conv_weights, bn_weights, relu_weights
 
+    def adjust_channel(self, x, out_channels):
+        return nn.Conv2d(x.shape[1], out_channels, kernel_size=1, bias=False)(x)
+
     def forward(self, x):
         H, W = x.size()[2:]
 
         x = self.init_block(x)
 
+        # Stage 1
         x1 = self.block1_1(x)
         x1 = self.block1_2(x1)
         x1 = self.block1_3(x1)
+        x1 = x1 + x  # 添加跳跃连接
 
+        # Stage 2
         x2 = self.block2_1(x1)
         x2 = self.block2_2(x2)
         x2 = self.block2_3(x2)
         x2 = self.block2_4(x2)
+        x1_adjusted = self.adjust_x1_to_x2(x1)
+        x2 = x2 + x1_adjusted  # 添加跳跃连接
 
+        # Stage 3
         x3 = self.block3_1(x2)
         x3 = self.block3_2(x3)
         x3 = self.block3_3(x3)
         x3 = self.block3_4(x3)
+        x2_adjusted = self.adjust_x2_to_x3(x2)
+        x3 = x3 + x2_adjusted  # 添加跳跃连接
 
+        # Stage 4
         x4 = self.block4_1(x3)
         x4 = self.block4_2(x4)
         x4 = self.block4_3(x4)
         x4 = self.block4_4(x4)
+        x3_adjusted = self.adjust_x3_to_x4(x3)
+        x4 = x4 + x3_adjusted  # 添加跳跃连接
 
         x_fuses = []
         if self.sa and self.dil is not None:
@@ -273,7 +314,7 @@ class PiDiNet(nn.Module):
         outputs = [e1, e2, e3, e4]
 
         output = self.classifier(torch.cat(outputs, dim=1))
-        #if not self.training:
+        # if not self.training:
         #    return torch.sigmoid(output)
 
         outputs.append(output)
