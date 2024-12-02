@@ -59,6 +59,20 @@ class CDCM(nn.Module):
         x4 = self.conv2_4(x)
         return x1 + x2 + x3 + x4
 
+class ECAModule(nn.Module):
+    def __init__(self, channels, k_size=3):
+        super(ECAModule, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.conv = nn.Conv1d(1, 1, kernel_size=k_size, padding=(k_size - 1) // 2, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        # x: [B, C, H, W]
+        y = self.avg_pool(x)  # [B, C, 1, 1]
+        y = y.squeeze(-1).transpose(-1, -2)  # [B, 1, C]
+        y = self.conv(y)  # [B, 1, C]
+        y = self.sigmoid(y).transpose(-1, -2).unsqueeze(-1)  # [B, C, 1, 1]
+        return x * y.expand_as(x)
 
 class MapReduce(nn.Module):
     """
@@ -201,6 +215,11 @@ class PiDiNet(nn.Module):
             for i in range(4):
                 self.conv_reduces.append(MapReduce(self.fuseplanes[i]))
 
+        self.eca_stage1 = ECAModule(self.fuseplanes[0])
+        self.eca_stage2 = ECAModule(self.fuseplanes[1])
+        self.eca_stage3 = ECAModule(self.fuseplanes[2])
+        self.eca_stage4 = ECAModule(self.fuseplanes[3])
+
         self.classifier = nn.Conv2d(4, 1, kernel_size=1) # has bias
         nn.init.constant_(self.classifier.weight, 0.25)
         nn.init.constant_(self.classifier.bias, 0)
@@ -229,21 +248,25 @@ class PiDiNet(nn.Module):
         x1 = self.block1_1(x)
         x1 = self.block1_2(x1)
         x1 = self.block1_3(x1)
+        x1 = self.eca_stage1(x1)
 
         x2 = self.block2_1(x1)
         x2 = self.block2_2(x2)
         x2 = self.block2_3(x2)
         x2 = self.block2_4(x2)
+        x2 = self.eca_stage2(x2)
 
         x3 = self.block3_1(x2)
         x3 = self.block3_2(x3)
         x3 = self.block3_3(x3)
         x3 = self.block3_4(x3)
+        x3 = self.eca_stage3(x3)
 
         x4 = self.block4_1(x3)
         x4 = self.block4_2(x4)
         x4 = self.block4_3(x4)
         x4 = self.block4_4(x4)
+        x4 = self.eca_stage4(x4)
 
         x_fuses = []
         if self.sa and self.dil is not None:
