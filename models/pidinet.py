@@ -59,6 +59,21 @@ class CDCM(nn.Module):
         x4 = self.conv2_4(x)
         return x1 + x2 + x3 + x4
 
+class MixedConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(MixedConv2d, self).__init__()
+        self.conv3x3 = nn.Conv2d(in_channels, out_channels // 2, kernel_size=3, padding=1, bias=False)
+        self.conv5x5 = nn.Conv2d(in_channels, out_channels - out_channels // 2, kernel_size=5, padding=2, bias=False)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        out3x3 = self.conv3x3(x)
+        out5x5 = self.conv5x5(x)
+        out = torch.cat([out3x3, out5x5], dim=1)
+        out = self.bn(out)
+        out = self.relu(out)
+        return out
 
 class MapReduce(nn.Module):
     """
@@ -157,17 +172,17 @@ class PiDiNet(nn.Module):
         self.block1_3 = block_class(pdcs[3], self.inplane, self.inplane)
         self.fuseplanes.append(self.inplane) # C
 
-        inplane = self.inplane
+        inplane_stage2 = self.inplane
         self.inplane = self.inplane * 2
-        self.block2_1 = block_class(pdcs[4], inplane, self.inplane, stride=2)
+        self.block2_1 = MixedConv2d(inplane_stage2, self.inplane)
         self.block2_2 = block_class(pdcs[5], self.inplane, self.inplane)
         self.block2_3 = block_class(pdcs[6], self.inplane, self.inplane)
         self.block2_4 = block_class(pdcs[7], self.inplane, self.inplane)
         self.fuseplanes.append(self.inplane) # 2C
-        
-        inplane = self.inplane
+
+        inplane_stage3 = self.inplane
         self.inplane = self.inplane * 2
-        self.block3_1 = block_class(pdcs[8], inplane, self.inplane, stride=2)
+        self.block3_1 = MixedConv2d(inplane_stage3, self.inplane)
         self.block3_2 = block_class(pdcs[9], self.inplane, self.inplane)
         self.block3_3 = block_class(pdcs[10], self.inplane, self.inplane)
         self.block3_4 = block_class(pdcs[11], self.inplane, self.inplane)
