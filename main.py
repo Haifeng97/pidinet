@@ -130,7 +130,7 @@ def main(running_file):
         return
 
     ### Define optimizer
-    conv_weights, bn_weights, relu_weights = model.get_weights()
+    conv_weights, bn_weights, activation_weights = model.get_weights()
     param_groups = [{
             'params': conv_weights,
             'weight_decay': args.wd,
@@ -138,13 +138,13 @@ def main(running_file):
             'params': bn_weights,
             'weight_decay': 0.1 * args.wd,
             'lr': args.lr}, {
-            'params': relu_weights, 
+            'params': activation_weights,
             'weight_decay': 0.0,
             'lr': args.lr
     }]
     info = ('conv weights: lr %.6f, wd %.6f' + \
             '\tbn weights: lr %.6f, wd %.6f' + \
-            '\trelu weights: lr %.6f, wd %.6f') % \
+            '\tactivation weights: lr %.6f, wd %.6f') % \
             (args.lr, args.wd, args.lr, args.wd * 0.1, args.lr, 0.0)
 
     print(info)
