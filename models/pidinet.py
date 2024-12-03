@@ -60,6 +60,24 @@ class CDCM(nn.Module):
         return x1 + x2 + x3 + x4
 
 
+class DropBlock2D(nn.Module):
+    def __init__(self, block_size, drop_prob):
+        super(DropBlock2D, self).__init__()
+        self.block_size = block_size
+        self.drop_prob = drop_prob
+
+    def forward(self, x):
+        if not self.training or self.drop_prob == 0.0:
+            return x
+        gamma = self.drop_prob / (self.block_size ** 2)
+        for sh in x.shape[2:]:
+            gamma *= sh / (sh - self.block_size + 1)
+        mask = (torch.rand(x.shape[0], *x.shape[2:], device=x.device) < gamma).float()
+        block_mask = F.max_pool2d(mask.unsqueeze(1), kernel_size=self.block_size, stride=1,
+                                  padding=self.block_size // 2)
+        x = x * (1 - block_mask)
+        return x * (block_mask.numel() / block_mask.sum())
+
 class MapReduce(nn.Module):
     """
     Reduce feature maps into a single edge map
@@ -85,6 +103,7 @@ class PDCBlock(nn.Module):
         self.conv1 = Conv2d(pdc, inplane, inplane, kernel_size=3, padding=1, groups=inplane, bias=False)
         self.relu2 = nn.ReLU()
         self.conv2 = nn.Conv2d(inplane, ouplane, kernel_size=1, padding=0, bias=False)
+        self.dropblock = DropBlock2D(block_size=7, drop_prob=0.1)
 
     def forward(self, x):
         if self.stride > 1:
@@ -95,6 +114,7 @@ class PDCBlock(nn.Module):
         if self.stride > 1:
             x = self.shortcut(x)
         y = y + x
+        y = self.dropblock(y)
         return y
 
 class PDCBlock_converted(nn.Module):
