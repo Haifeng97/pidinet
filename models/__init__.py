@@ -1,5 +1,5 @@
 
-from .pidinet import pidinet_tiny, pidinet_small, pidinet
+from .pidinet import pidinet_tiny, pidinet_small, pidinet, pidinet_6x3
 
 from .pidinet import pidinet_tiny_converted, pidinet_small_converted, pidinet_converted
 

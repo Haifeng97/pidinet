@@ -314,3 +314,197 @@ def pidinet_converted(args):
     pdcs = config_model_converted(args.config)
     dil = 24 if args.dil else None
     return PiDiNet(60, pdcs, dil=dil, sa=args.sa, convert=True)
+
+
+class PiDiNet_6x3(nn.Module):
+    """
+    6 stages, each stage 3 blocks, total 18 blocks + 1 init_block
+    Stages: 0~5
+    For example: inplane start from 30, every stride stage double channels
+    """
+
+    def __init__(self, inplane, pdcs, dil=None, sa=False, convert=False):
+        super(PiDiNet_6x3, self).__init__()
+        self.sa = sa
+        if dil is not None:
+            assert isinstance(dil, int), 'dil should be an int'
+        self.dil = dil
+
+        # total layers needed: 1 init + 18 blocks = 19 pdcs
+        # pdcs[0] for init
+        # pdcs[1..3] stage0
+        # pdcs[4..6] stage1
+        # pdcs[7..9] stage2
+        # pdcs[10..12] stage3
+        # pdcs[13..15] stage4
+        # pdcs[16..18] stage5
+
+        assert len(pdcs) >= 19, "Need at least 19 pdcs for 6x3 design"
+
+        if convert:
+            from .ops import PDCBlock_converted as PDCBlockClass
+        else:
+            PDCBlockClass = PDCBlock
+
+        if convert:
+            if pdcs[0] == 'rd':
+                init_kernel_size = 5
+                init_padding = 2
+            else:
+                init_kernel_size = 3
+                init_padding = 1
+            self.init_block = nn.Conv2d(3, inplane, kernel_size=init_kernel_size, padding=init_padding, bias=False)
+        else:
+            self.init_block = Conv2d(pdcs[0], 3, inplane, kernel_size=3, padding=1)
+
+        # Stage definitions
+        # Stage0 (3 blocks, no stride)
+        self.stage0_1 = PDCBlockClass(pdcs[1], inplane, inplane, stride=1)
+        self.stage0_2 = PDCBlockClass(pdcs[2], inplane, inplane, stride=1)
+        self.stage0_3 = PDCBlockClass(pdcs[3], inplane, inplane, stride=1)
+        fuseplanes = [inplane]
+
+        # Stage1 (3 blocks, stride=2)
+        inplane_stage1 = inplane
+        inplane *= 2
+        self.stage1_1 = PDCBlockClass(pdcs[4], inplane_stage1, inplane, stride=2)
+        self.stage1_2 = PDCBlockClass(pdcs[5], inplane, inplane, stride=1)
+        self.stage1_3 = PDCBlockClass(pdcs[6], inplane, inplane, stride=1)
+        fuseplanes.append(inplane)
+
+        # Stage2 (3 blocks, stride=2)
+        inplane_stage2 = inplane
+        inplane *= 2
+        self.stage2_1 = PDCBlockClass(pdcs[7], inplane_stage2, inplane, stride=2)
+        self.stage2_2 = PDCBlockClass(pdcs[8], inplane, inplane, stride=1)
+        self.stage2_3 = PDCBlockClass(pdcs[9], inplane, inplane, stride=1)
+        fuseplanes.append(inplane)
+
+        # Stage3 (3 blocks, stride=2)
+        inplane_stage3 = inplane
+        inplane *= 2
+        self.stage3_1 = PDCBlockClass(pdcs[10], inplane_stage3, inplane, stride=2)
+        self.stage3_2 = PDCBlockClass(pdcs[11], inplane, inplane, stride=1)
+        self.stage3_3 = PDCBlockClass(pdcs[12], inplane, inplane, stride=1)
+        fuseplanes.append(inplane)
+
+        # Stage4 (3 blocks, stride=2)
+        inplane_stage4 = inplane
+        inplane *= 2
+        self.stage4_1 = PDCBlockClass(pdcs[13], inplane_stage4, inplane, stride=2)
+        self.stage4_2 = PDCBlockClass(pdcs[14], inplane, inplane, stride=1)
+        self.stage4_3 = PDCBlockClass(pdcs[15], inplane, inplane, stride=1)
+        fuseplanes.append(inplane)
+
+        # Stage5 (3 blocks, stride=2)
+        inplane_stage5 = inplane
+        inplane *= 2
+        self.stage5_1 = PDCBlockClass(pdcs[16], inplane_stage5, inplane, stride=2)
+        self.stage5_2 = PDCBlockClass(pdcs[17], inplane, inplane, stride=1)
+        self.stage5_3 = PDCBlockClass(pdcs[18], inplane, inplane, stride=1)
+        fuseplanes.append(inplane)
+
+        self.fuseplanes = fuseplanes
+
+        # Attention / Dilation / Reduce
+        self.conv_reduces = nn.ModuleList()
+        if self.sa and self.dil is not None:
+            self.attentions = nn.ModuleList()
+            self.dilations = nn.ModuleList()
+            for fp in fuseplanes:
+                self.dilations.append(CDCM(fp, self.dil))
+                self.attentions.append(CSAM(self.dil))
+                self.conv_reduces.append(MapReduce(self.dil))
+        elif self.sa:
+            self.attentions = nn.ModuleList()
+            for fp in fuseplanes:
+                self.attentions.append(CSAM(fp))
+                self.conv_reduces.append(MapReduce(fp))
+        elif self.dil is not None:
+            self.dilations = nn.ModuleList()
+            for fp in fuseplanes:
+                self.dilations.append(CDCM(fp, self.dil))
+                self.conv_reduces.append(MapReduce(self.dil))
+        else:
+            for fp in fuseplanes:
+                self.conv_reduces.append(MapReduce(fp))
+
+        self.classifier = nn.Conv2d(len(fuseplanes), 1, kernel_size=1)  # has bias
+        nn.init.constant_(self.classifier.weight, 0.25)
+        nn.init.constant_(self.classifier.bias, 0)
+
+        print('6x3 initialization done')
+
+    def get_weights(self):
+        conv_weights = []
+        bn_weights = []
+        relu_weights = []
+        for pname, p in self.named_parameters():
+            if 'bn' in pname:
+                bn_weights.append(p)
+            elif 'relu' in pname:
+                relu_weights.append(p)
+            else:
+                conv_weights.append(p)
+        return conv_weights, bn_weights, relu_weights
+
+    def forward(self, x):
+        H, W = x.size()[2:]
+        x = self.init_block(x)
+
+        # stage0
+        x0 = self.stage0_1(x)
+        x0 = self.stage0_2(x0)
+        x0 = self.stage0_3(x0)
+        # stage1
+        x1 = self.stage1_1(x0)
+        x1 = self.stage1_2(x1)
+        x1 = self.stage1_3(x1)
+        # stage2
+        x2 = self.stage2_1(x1)
+        x2 = self.stage2_2(x2)
+        x2 = self.stage2_3(x2)
+        # stage3
+        x3 = self.stage3_1(x2)
+        x3 = self.stage3_2(x3)
+        x3 = self.stage3_3(x3)
+        # stage4
+        x4 = self.stage4_1(x3)
+        x4 = self.stage4_2(x4)
+        x4 = self.stage4_3(x4)
+        # stage5
+        x5 = self.stage5_1(x4)
+        x5 = self.stage5_2(x5)
+        x5 = self.stage5_3(x5)
+
+        features = [x0, x1, x2, x3, x4, x5]
+
+        x_fuses = []
+        if self.sa and self.dil is not None:
+            for i, xi in enumerate(features):
+                x_fuses.append(self.attentions[i](self.dilations[i](xi)))
+        elif self.sa:
+            for i, xi in enumerate(features):
+                x_fuses.append(self.attentions[i](xi))
+        elif self.dil is not None:
+            for i, xi in enumerate(features):
+                x_fuses.append(self.dilations[i](xi))
+        else:
+            x_fuses = features
+
+        outs = []
+        for i, xf in enumerate(x_fuses):
+            ei = self.conv_reduces[i](xf)
+            ei = F.interpolate(ei, (H, W), mode="bilinear", align_corners=False)
+            outs.append(ei)
+
+        output = self.classifier(torch.cat(outs, dim=1))
+        outs.append(output)
+        outs = [torch.sigmoid(r) for r in outs]
+        return outs
+
+def pidinet_6x3(args):
+    pdcs = config_model(args.config)  # 请确保config_model返回至少19个pdcs
+    dil = 24 if args.dil else None
+    # 假设初始通道数为30（可根据需求修改）
+    return PiDiNet_6x3(30, pdcs, dil=dil, sa=args.sa)

@@ -254,7 +254,40 @@ nets = {
         'layer14': 'rd',
         'layer15': 'cv',
         },
+    'carv6x3': {
+        'layer0': 'cd',  # initial block使用cd
+        # 接下来是6个stage，每个stage 3个block
+        # 第一个stage的3个block：
+        'layer1': 'ad',
+        'layer2': 'rd',
+        'layer3': 'cv',
+
+        # 第二个stage的3个block：
+        'layer4': 'cd',
+        'layer5': 'ad',
+        'layer6': 'rd',
+
+        # 第三个stage的3个block：
+        'layer7': 'cv',
+        'layer8': 'cd',
+        'layer9': 'ad',
+
+        # 第四个stage的3个block：
+        'layer10': 'rd',
+        'layer11': 'cv',
+        'layer12': 'cd',
+
+        # 第五个stage的3个block：
+        'layer13': 'ad',
+        'layer14': 'rd',
+        'layer15': 'cv',
+
+        # 第六个stage的3个block：
+        'layer16': 'cd',
+        'layer17': 'ad',
+        'layer18': 'rd',
     }
+}
 
 
 def config_model(model):
@@ -264,8 +297,10 @@ def config_model(model):
 
     print(str(nets[model]))
 
+    num_layers = len(nets[model])
+
     pdcs = []
-    for i in range(16):
+    for i in range(num_layers):
         layer_name = 'layer%d' % i
         op = nets[model][layer_name]
         pdcs.append(createConvFunc(op))
@@ -279,11 +314,12 @@ def config_model_converted(model):
 
     print(str(nets[model]))
 
+    num_layers = len(nets[model])
+
     pdcs = []
-    for i in range(16):
+    for i in range(num_layers):
         layer_name = 'layer%d' % i
         op = nets[model][layer_name]
         pdcs.append(op)
 
     return pdcs
-
