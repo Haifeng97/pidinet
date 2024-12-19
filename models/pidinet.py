@@ -331,12 +331,12 @@ class PiDiNet_6x4(nn.Module):
             block_class = PDCBlock
 
         # 通道设置
-        c1 = 60
-        c2 = 60
-        c3 = 60
-        c4 = 120
-        c5 = 240
-        c6 = 480
+        c1 = 100
+        c2 = 100
+        c3 = 100
+        c4 = 200
+        c5 = 400
+        c6 = 800
 
         pdc_init = pdcs[0]
         self.init_block = Conv2d(pdc_init, 3, c1, kernel_size=3, padding=1)
