@@ -77,7 +77,7 @@ class PDCBlock(nn.Module):
     def __init__(self, pdc, inplane, ouplane, stride=1):
         super(PDCBlock, self).__init__()
         self.stride=stride
-            
+
         self.stride=stride
         if self.stride > 1:
             self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -314,3 +314,118 @@ def pidinet_converted(args):
     pdcs = config_model_converted(args.config)
     dil = 24 if args.dil else None
     return PiDiNet(60, pdcs, dil=dil, sa=args.sa, convert=True)
+
+
+class PiDiNet_6x4(nn.Module):
+    def __init__(self, pdcs, dil, sa, convert=False):
+        super(PiDiNet_6x4, self).__init__()
+        # 前3个stage 60通道，第4个120通道，第5个240，第6个480
+        # 共24个block + 1 init block = 25 ops
+        assert len(pdcs) == 25, "Need 25 pdcs for 6x4 design"
+        self.sa = sa
+        self.dil = dil
+        assert self.sa and self.dil is not None, "Assume sa and dil both True"
+        if convert:
+            block_class = PDCBlock_converted
+        else:
+            block_class = PDCBlock
+
+        # 通道设置
+        c1 = 60
+        c2 = 60
+        c3 = 60
+        c4 = 120
+        c5 = 240
+        c6 = 480
+
+        pdc_init = pdcs[0]
+        self.init_block = Conv2d(pdc_init, 3, c1, kernel_size=3, padding=1)
+
+        # 定义stage构建函数
+        # stage输入参数：start_idx对应pdcs起始index（从1开始，因为0是init）
+        # stage包含4个block
+        def make_stage(start_idx, inplane, outplane, downsample=False):
+            # 如果downsample=True，则第一个block stride=2，否则stride=1
+            stride = 2 if downsample else 1
+            blocks = []
+            blocks.append(block_class(pdcs[start_idx],   inplane, outplane, stride=stride))
+            blocks.append(block_class(pdcs[start_idx+1], outplane, outplane))
+            blocks.append(block_class(pdcs[start_idx+2], outplane, outplane))
+            blocks.append(block_class(pdcs[start_idx+3], outplane, outplane))
+            return nn.Sequential(*blocks)
+
+        # 注意pdcs[1..24]
+        # stage1 (4个block): 通道不变c1=60，不下采样
+        self.stage1 = make_stage(1, c1, c1, downsample=False)
+        # stage2 (4个block): 仍然是60通道，但这里可以不下采样
+        # 但题目要求前三个stage都是60通道，并无下采样，只有到第四个stage才加通道吗？
+        # 要求是前三个stage都是60通道。那意味着stage2, stage3也不下采样且通道不变
+        self.stage2 = make_stage(5, c1, c1, downsample=False)
+        self.stage3 = make_stage(9, c1, c1, downsample=False)
+
+        # 第四个stage c1->c4=120 通道增加并下采样
+        self.stage4 = make_stage(13, c1, c4, downsample=True)
+        # 第五个stage c4->c5=240 通道增加并下采样
+        self.stage5 = make_stage(17, c4, c5, downsample=True)
+        # 第六个stage c5->c6=480 通道增加并下采样
+        self.stage6 = make_stage(21, c5, c6, downsample=True)
+
+        # fuseplanes记录每个stage输出通道数
+        self.fuseplanes = [c1, c1, c1, c4, c5, c6]
+
+        self.attentions = nn.ModuleList()
+        self.dilations = nn.ModuleList()
+        self.conv_reduces = nn.ModuleList()
+
+        for p in self.fuseplanes:
+            self.dilations.append(CDCM(p, self.dil))
+            self.attentions.append(CSAM(self.dil))
+            self.conv_reduces.append(MapReduce(self.dil))
+
+        self.classifier = nn.Conv2d(6, 1, kernel_size=1)
+        nn.init.constant_(self.classifier.weight, 1.0/6.0)
+        nn.init.constant_(self.classifier.bias, 0)
+        print('6x4 initialization done')
+
+    def get_weights(self):
+        conv_weights = []
+        bn_weights = []
+        relu_weights = []
+        for pname, p in self.named_parameters():
+            if 'bn' in pname:
+                bn_weights.append(p)
+            elif 'relu' in pname:
+                relu_weights.append(p)
+            else:
+                conv_weights.append(p)
+        return conv_weights, bn_weights, relu_weights
+
+    def forward(self, x):
+        H, W = x.size()[2:]
+        x = self.init_block(x)
+
+        x1 = self.stage1(x)  # 60通道
+        x2 = self.stage2(x1) # 60通道
+        x3 = self.stage3(x2) # 60通道
+        x4 = self.stage4(x3) # 120通道
+        x5 = self.stage5(x4) # 240通道
+        x6 = self.stage6(x5) # 480通道
+
+        xs = [x1, x2, x3, x4, x5, x6]
+        e_list = []
+        for i, xi in enumerate(xs):
+            ei = self.attentions[i](self.dilations[i](xi))
+            ei = self.conv_reduces[i](ei)
+            ei = F.interpolate(ei, (H, W), mode="bilinear", align_corners=False)
+            e_list.append(ei)
+
+        out_cat = torch.cat(e_list, dim=1)
+        output = self.classifier(out_cat)
+        outputs = e_list + [output]
+        outputs = [torch.sigmoid(r) for r in outputs]
+        return outputs
+
+def pidinet6x4(args):
+    pdcs = config_model(args.config) # 确保config中定义carv_6x4共25个pdc
+    dil = 24 if args.dil else None
+    return PiDiNet_6x4(pdcs, dil=dil, sa=args.sa)

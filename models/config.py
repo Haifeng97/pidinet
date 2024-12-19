@@ -253,8 +253,42 @@ nets = {
         'layer13': 'ad',
         'layer14': 'rd',
         'layer15': 'cv',
-        },
+    },
+    'carv6x4': {
+        # 初始卷积为cd（可自行设定）
+        'layer0':  'cv',
+
+        'layer1':  'cd',
+        'layer2':  'ad',
+        'layer3':  'rd',
+        'layer4':  'cv',
+
+        'layer5':  'cd',
+        'layer6':  'ad',
+        'layer7':  'rd',
+        'layer8':  'cv',
+
+        'layer9':  'cd',
+        'layer10': 'ad',
+        'layer11': 'rd',
+        'layer12': 'cv',
+
+        'layer13': 'cd',
+        'layer14': 'ad',
+        'layer15': 'rd',
+        'layer16': 'cv',
+
+        'layer17': 'cd',
+        'layer18': 'ad',
+        'layer19': 'rd',
+        'layer20': 'cv',
+
+        'layer21': 'cd',
+        'layer22': 'ad',
+        'layer23': 'rd',
+        'layer24': 'cv',
     }
+}
 
 
 def config_model(model):
@@ -265,7 +299,8 @@ def config_model(model):
     print(str(nets[model]))
 
     pdcs = []
-    for i in range(16):
+    # 因为有25个层定义（layer0 - layer24），共25个op
+    for i in range(25):
         layer_name = 'layer%d' % i
         op = nets[model][layer_name]
         pdcs.append(createConvFunc(op))
@@ -280,10 +315,9 @@ def config_model_converted(model):
     print(str(nets[model]))
 
     pdcs = []
-    for i in range(16):
+    for i in range(25):
         layer_name = 'layer%d' % i
         op = nets[model][layer_name]
         pdcs.append(op)
 
     return pdcs
-
