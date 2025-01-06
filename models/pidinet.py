@@ -296,6 +296,23 @@ def pidinet(args):
     dil = 24 if args.dil else None
     return PiDiNet(60, pdcs, dil=dil, sa=args.sa)
 
+def pidinet_80(args):
+    pdcs = config_model(args.config)
+    dil = 24 if args.dil else None
+    return PiDiNet(80, pdcs, dil=dil, sa=args.sa)
+
+def pidinet_70(args):
+    pdcs = config_model(args.config)
+    dil = 24 if args.dil else None
+    return PiDiNet(70, pdcs, dil=dil, sa=args.sa)
+
+def pidinet_50(args):
+    pdcs = config_model(args.config)
+    dil = 24 if args.dil else None
+    return PiDiNet(50, pdcs, dil=dil, sa=args.sa)
+
+
+
 
 
 ## convert pidinet to vanilla cnn
