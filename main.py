@@ -44,6 +44,7 @@ parser.add_argument('--dataset', type=str, default='BSDS',
 
 parser.add_argument('--model', type=str, default='baseline', 
         help='model to train the dataset')
+parser.add_argument('--inplane', type=int, default=60, help='initial channels in PiDiNet')
 parser.add_argument('--sa', action='store_true', 
         help='use CSAM in pidinet')
 parser.add_argument('--dil', action='store_true', 
