@@ -44,6 +44,8 @@ parser.add_argument('--dataset', type=str, default='BSDS',
 
 parser.add_argument('--model', type=str, default='baseline', 
         help='model to train the dataset')
+parser.add_argument('--inplane', type=int, default=60,
+                    help='initial channel number (default: 60)')
 parser.add_argument('--sa', action='store_true', 
         help='use CSAM in pidinet')
 parser.add_argument('--dil', action='store_true', 
@@ -116,11 +118,15 @@ def main(running_file):
         assert args.dataset in dataset_setting_choices, 'unrecognized data setting %s, please choose from %s' % (str(args.dataset), str(dataset_setting_choices))
         args.dataset = list(args.dataset.strip().split('-')) 
 
+    init_channels = args.inplane
 
     print(args)
 
     ### Create model
-    model = getattr(models, args.model)(args)
+    if args.model == 'pidinet_6x4':
+        model = models.pidinet6x4(args, init_channels)
+    else:
+        model = getattr(models, args.model)(args)
 
     ### Output its model size, flops and bops
     if args.checkinfo:

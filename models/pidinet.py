@@ -317,7 +317,7 @@ def pidinet_converted(args):
 
 
 class PiDiNet_6x4(nn.Module):
-    def __init__(self, pdcs, dil, sa, convert=False):
+    def __init__(self, pdcs, dil, sa, inplane, convert=False):
         super(PiDiNet_6x4, self).__init__()
         # 前3个stage 60通道，第4个120通道，第5个240，第6个480
         # 共24个block + 1 init block = 25 ops
@@ -331,7 +331,7 @@ class PiDiNet_6x4(nn.Module):
             block_class = PDCBlock
 
         # 通道设置
-        c1 = 75
+        c1 = inplane
         c2 = c1
         c3 = c1
         c4 = 2 * c1
@@ -385,7 +385,7 @@ class PiDiNet_6x4(nn.Module):
         self.classifier = nn.Conv2d(6, 1, kernel_size=1)
         nn.init.constant_(self.classifier.weight, 1.0/6.0)
         nn.init.constant_(self.classifier.bias, 0)
-        print('6x4 initialization done')
+        print(f'6x6x{inplane} initialization done')
 
     def get_weights(self):
         conv_weights = []
@@ -428,4 +428,4 @@ class PiDiNet_6x4(nn.Module):
 def pidinet6x4(args):
     pdcs = config_model(args.config) # 确保config中定义carv_6x4共25个pdc
     dil = 24 if args.dil else None
-    return PiDiNet_6x4(pdcs, dil=dil, sa=args.sa)
+    return PiDiNet_6x4(pdcs, dil=dil, sa=args.sa, inplane=args.inplane)
